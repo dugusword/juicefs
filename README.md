@@ -1,10 +1,10 @@
-<p align="center"><a href="https://github.com/juicedata/juicefs"><img alt="JuiceFS Logo" src="docs/en/images/juicefs-logo.png" width="50%" /></a></p>
+<p align="center"><a href="https://github.com/juicedata/juicefs"><img alt="JuiceFS Logo" src="docs/en/images/juicefs-logo.svg" width="50%" /></a></p>
 <p align="center">
     <a href="https://app.travis-ci.com/github/juicedata/juicefs"><img alt="Travis CI Status" src="https://img.shields.io/travis/com/juicedata/juicefs/main?label=Unit%20Testing" /></a>
     <a href="https://github.com/juicedata/juicefs/actions/workflows/integrationtests.yml"><img alt="GitHub Workflow Status" src="https://img.shields.io/github/workflow/status/juicedata/juicefs/integrationtests?label=Integration%20Testing" /></a>
     <a href="https://goreportcard.com/report/github.com/juicedata/juicefs"><img alt="Go Report" src="https://goreportcard.com/badge/github.com/juicedata/juicefs" /></a>
     <a href="https://juicefs.com/docs/community/introduction"><img alt="English doc" src="https://img.shields.io/badge/docs-Doc%20Center-brightgreen" /></a>
-    <a href="https://join.slack.com/t/juicefs/shared_invite/zt-n9h5qdxh-YD7e0JxWdesSEa9vY_f_DA"><img alt="Join Slack" src="https://badgen.net/badge/Slack/Join%20JuiceFS/0abd59?icon=slack" /></a>
+    <a href="https://go.juicefs.com/slack"><img alt="Join Slack" src="https://badgen.net/badge/Slack/Join%20JuiceFS/0abd59?icon=slack" /></a>
 </p>
 
 **JuiceFS** is a high-performance [POSIX](https://en.wikipedia.org/wiki/POSIX) file system released under Apache License 2.0, particularly designed for the cloud-native environment. The data, stored via JuiceFS, will be persisted in object storage (e.g. Amazon S3), and the corresponding metadata can be persisted in various database engines such as Redis, MySQL, and TiKV based on the scenarios and requirements.
@@ -168,16 +168,15 @@ JuiceFS supports almost all object storage services. [Learn more](docs/en/guide/
 
 ## Who is using
 
-JuiceFS is still in beta quality, and the core storage format is not stabilized yet. Thus, please do a careful and thorough evaluation before using JuiceFS in a production environment. If you are interested, feel free to do tests and give us [feedback](https://github.com/juicedata/juicefs/discussions).
+JuiceFS is production ready and used by thousands of machines in production. A list of users has been assembled and documented [here](https://juicefs.com/docs/community/adopters). In addition JuiceFS has several collaborative projects that integrate with other open source projects, which we have documented [here](https://juicefs.com/docs/community/integrations). If you are also using JuiceFS, please feel free to let us know, and you are welcome to share your specific experience with everyone.
 
-You are welcome to tell us after using JuiceFS and share your experience with everyone. We have also collected a list of adopters [here](https://juicefs.com/docs/community/adopters). At the same time, JuiceFS has also been integrated with many open source projects, please visit [here](https://juicefs.com/docs/community/integrations) for more information.
+The storage format is stable, will be supported by all future releases.
 
 ## Roadmap
 
-- Stabilize storage format
 - Support FoundationDB as metadata engine
-- User and group quotas
 - Directory quotas
+- User and group quotas
 - Snapshot
 - Write once read many (WORM)
 
@@ -191,7 +190,7 @@ Thank you for your contribution! Please refer to the [CONTRIBUTING.md](CONTRIBUT
 
 ## Community
 
-Welcome to join the [Discussions](https://github.com/juicedata/juicefs/discussions) and the [Slack channel](https://join.slack.com/t/juicefs/shared_invite/zt-n9h5qdxh-YD7e0JxWdesSEa9vY_f_DA) to connect with JuiceFS team members and other users.
+Welcome to join the [Discussions](https://github.com/juicedata/juicefs/discussions) and the [Slack channel](https://go.juicefs.com/slack) to connect with JuiceFS team members and other users.
 
 ## Usage Tracking
 

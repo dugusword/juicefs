@@ -1,10 +1,10 @@
-<p align="center"><a href="https://github.com/juicedata/juicefs"><img alt="JuiceFS Logo" src="docs/zh_cn/images/juicefs-logo.png" width="50%" /></a></p>
+<p align="center"><a href="https://github.com/juicedata/juicefs"><img alt="JuiceFS Logo" src="docs/zh_cn/images/juicefs-logo.svg" width="50%" /></a></p>
 <p align="center">
     <a href="https://app.travis-ci.com/github/juicedata/juicefs"><img alt="Travis CI Status" src="https://img.shields.io/travis/com/juicedata/juicefs/main?label=Unit%20Testing" /></a>
     <a href="https://github.com/juicedata/juicefs/actions/workflows/integrationtests.yml"><img alt="GitHub Workflow Status" src="https://img.shields.io/github/workflow/status/juicedata/juicefs/integrationtests?label=Integration%20Testing" /></a>
     <a href="https://goreportcard.com/report/github.com/juicedata/juicefs"><img alt="Go Report" src="https://goreportcard.com/badge/github.com/juicedata/juicefs" /></a>
     <a href="https://juicefs.com/docs/zh/community/introduction"><img alt="English doc" src="https://img.shields.io/badge/docs-文档中心-brightgreen" /></a>
-    <a href="https://join.slack.com/t/juicefs/shared_invite/zt-n9h5qdxh-YD7e0JxWdesSEa9vY_f_DA"><img alt="Join Slack" src="https://badgen.net/badge/Slack/加入%20JuiceFS/0abd59?icon=slack" /></a>
+    <a href="https://go.juicefs.com/slack"><img alt="Join Slack" src="https://badgen.net/badge/Slack/加入%20JuiceFS/0abd59?icon=slack" /></a>
 </p>
 
 JuiceFS 是一款高性能 [POSIX](https://en.wikipedia.org/wiki/POSIX) 文件系统，针对云原生环境特别优化设计，在 Apache 2.0 开源协议下发布。使用 JuiceFS 存储数据，数据本身会被持久化在对象存储（例如 Amazon S3），而数据所对应的元数据可以根据场景需求被持久化在 Redis、MySQL、TiKV 等多种数据库引擎中。
@@ -168,16 +168,15 @@ JuiceFS 支持几乎所有主流的对象存储服务，[查看详情](docs/zh_c
 
 ## 谁在使用
 
-JuiceFS 目前是 beta 状态，核心的存储格式还没有完全确定，如果要使用在生产环境中，请先进行细致认真的评估。如果你对它有兴趣，请尽早测试，并给我们[反馈](https://github.com/juicedata/juicefs/discussions)。
+JuiceFS 已经可以用于生产环境，目前有几千个节点在生产环境中使用它。我们收集汇总了一份使用者名单，记录在[这里](https://juicefs.com/docs/zh/community/adopters)。另外 JuiceFS 还有不少与其他开源项目进行集成的合作项目，我们将其记录在[这里](https://juicefs.com/docs/zh/community/integrations)。如果你也在使用 JuiceFS，请随时告知我们，也欢迎你向大家分享具体的使用经验。
 
-欢迎你在使用 JuiceFS 后告诉我们，向大家分享你的使用经验，我们也收集汇总了一份使用者名单在[这里](https://juicefs.com/docs/zh/community/adopters)。同时 JuiceFS 也已经与很多开源项目进行集成，请访问[这里](https://juicefs.com/docs/zh/community/integrations)了解更多信息。
+JuiceFS 的存储格式已经稳定，会被后续发布的所有版本支持。
 
 ## 产品路线图
 
-- 稳定存储格式
 - 支持使用 FoundationDB 做元数据引擎
-- 基于用户和组的配额
 - 基于目录的配额
+- 基于用户和组的配额
 - 快照
 - 一次写入多次读取（WORM）
 
@@ -191,7 +190,7 @@ JuiceFS 目前是 beta 状态，核心的存储格式还没有完全确定，如
 
 ## 社区
 
-欢迎加入 [Discussions](https://github.com/juicedata/juicefs/discussions) 和 [Slack 频道](https://join.slack.com/t/juicefs/shared_invite/zt-n9h5qdxh-YD7e0JxWdesSEa9vY_f_DA) 跟我们的团队和其他社区成员交流。
+欢迎加入 [Discussions](https://github.com/juicedata/juicefs/discussions) 和 [Slack 频道](https://go.juicefs.com/slack) 跟我们的团队和其他社区成员交流。
 
 ## 使用量收集
 

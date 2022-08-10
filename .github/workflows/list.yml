@@ -59,6 +59,7 @@ jobs:
           ls -lh |wc -l >/tmp/count.log
           cat /tmp/count.log | grep 7000001
           if [ $? != 0 ];then echo "file num is error";exit 1; fi
+
       - name: Send Slack Notification
         if: ${{ failure() }}
         uses: juicedata/slack-notify-action@main
@@ -101,6 +102,7 @@ jobs:
           ls -lh |wc -l >/tmp/count.log
           cat /tmp/count.log | grep 7000001
           if [ $? != 0 ];then echo "file num is error";exit 1; fi
+
       - name: Send Slack Notification
         if: ${{ failure() }}
         uses: juicedata/slack-notify-action@main
@@ -155,6 +157,7 @@ jobs:
           ls -lh |wc -l >/tmp/count.log
           cat /tmp/count.log | grep 7000001
           if [ $? != 0 ];then echo "file num is error";exit 1; fi
+
       - name: Send Slack Notification
         if: ${{ failure() }}
         uses: juicedata/slack-notify-action@main
@@ -196,12 +199,14 @@ jobs:
           ls -lh |wc -l >/tmp/count.log
           cat /tmp/count.log | grep 7000001
           if [ $? != 0 ];then echo "file num is error";exit 1; fi
+
       - name: Send Slack Notification
         if: ${{ failure() }}
         uses: juicedata/slack-notify-action@main
         with:
           channel-id: "${{ secrets.SLACK_CHANNEL_ID_FOR_PR_CHECK_NOTIFY }}"
           slack_bot_token: "${{ secrets.SLACK_BOT_TOKEN }}"
+          
       - name: Setup upterm session
         if: ${{ failure() }}
         uses: lhotari/action-upterm@v1

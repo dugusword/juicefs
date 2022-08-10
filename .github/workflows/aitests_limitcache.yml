@@ -24,7 +24,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.17.x'
+          go-version: '1.18.x'
 
       - name: Set up Docker
         uses: docker-practice/actions-setup-docker@master
@@ -113,6 +113,11 @@ jobs:
           cd /var/jfsCache/
           df -lh
 
+      - name: log
+        if: ${{ always() }}
+        run: | 
+          tail -300 /var/log/juicefs.log
+          grep "<FATAL>:" /var/log/juicefs.log && exit 1 || true
 
       - name: Send Slack Notification
         if: ${{ failure() }}

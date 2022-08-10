@@ -277,16 +277,59 @@ First you need to add JuiceFS SDK to `classpath` in Kafka Connect, e.g., `/usr/s
 While creating a Connect Sink task, configuration needs to be set up as follows:
 
 - Specify `hadoop.conf.dir` as the directory that contains the configuration file `core-site.xml`. If it is not running in Hadoop environment, you can create a seperate directory such as `/usr/local/juicefs/hadoop`, and then add the JuiceFS related configurations to `core-site.xml`.
+- Specify `store.url` as a path starting with `jfs://`.
 
-- Specific `store.url` as the path `jfs://`
-
-For example,
+For example:
 
 ```ini
 # Other configuration items are omitted.
 hadoop.conf.dir=/path/to/hadoop-conf
 store.url=jfs://path/to/store
 ```
+
+### HBase
+
+JuiceFS can be used by HBase for HFile, but is not fast (low latency) enough for Write Ahead Log (WAL), because it take much longer time to persist data into object storage than memory of DataNode.
+
+It is recommended to deploy a small HDFS cluster to store WAL and HFile files to be stored on JuiceFS.
+
+#### Create a new HBase cluster
+
+Modify `hbase-site.xml`:
+
+```xml title="hbase-site.xml"
+<property>
+  <name>hbase.rootdir</name>
+  <value>jfs://{vol_name}/hbase</value>
+</property>
+<property>
+  <name>hbase.wal.dir</name>
+  <value>hdfs://{ns}/hbase-wal</value>
+</property>
+```
+
+#### Modify existing HBase cluster
+
+In addition to modifying the above configurations, since the HBase cluster has already stored some data in ZooKeeper, in order to avoid conflicts, there are two solutions:
+
+1. Delete the old cluster
+
+   Delete the znode (default `/hbase`) configured by `zookeeper.znode.parent` via the ZooKeeper client.
+
+   :::note
+   This operation will delete all data on this HBase cluster.
+   :::
+
+2. Use a new znode
+
+   Keep the znode of the original HBase cluster so that it can be recovered later. Then configure a new value for `zookeeper.znode.parent`:
+
+   ```xml title="hbase-site.xml"
+   <property>
+     <name>zookeeper.znode.parent</name>
+     <value>/hbase-jfs</value>
+   </property>
+   ```
 
 ### Restart Services
 

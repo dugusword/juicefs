@@ -13,6 +13,11 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.18.x'
+
     - name: Build linux target
       run: |
         make juicefs 
@@ -47,3 +52,10 @@ runs:
         sudo ./juicefs mount $meta_url $mount_point -d
 
       shell: bash
+
+    - name: log
+      if: ${{ always() }}
+      shell: bash
+      run: | 
+        tail -300 /var/log/juicefs.log
+        grep "<FATAL>:" /var/log/juicefs.log && exit 1 || true

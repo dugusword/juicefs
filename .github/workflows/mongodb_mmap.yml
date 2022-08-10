@@ -21,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.17.x'
+          go-version: '1.18.x'
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -93,13 +93,12 @@ jobs:
           time ./bin/ycsb run mongodb -s -P workloads/workloadf -threads 10 > outputRun.txt
           df -lh
 
-
-
       - name: Log
-        if: ${{ failure() }}
+        if: ${{ always() }}
         run: |
           echo "juicefs log"
           sudo tail -n 1000 /var/log/juicefs.log
+          grep "<FATAL>:" /var/log/juicefs.log && exit 1 || true
 
       - name: Send Slack Notification
         if: ${{ failure() }}

@@ -23,7 +23,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.17.x'
+          go-version: '1.18.x'
 
       - name: Set up Docker
         uses: docker-practice/actions-setup-docker@master
@@ -88,6 +88,13 @@ jobs:
           sudo sysbench --config-file=/tmp/config.cfg oltp_write_only --tables=4 --time=300 --table-size=5000000 run
           sudo sysbench --config-file=/tmp/config.cfg oltp_read_write --tables=4 --time=600 --table-size=5000000 run
           sudo sysbench --config-file=/tmp/config.cfg oltp_point_select --tables=4 --table-size=5000000 cleanup
+
+      - name: Log
+        if: ${{ always() }}
+        run: |
+          echo "juicefs log"
+          sudo tail -n 1000 /var/log/juicefs.log
+          grep "<FATAL>:" /var/log/juicefs.log && exit 1 || true
 
       - name: Send Slack Notification
         if: ${{ failure() }}

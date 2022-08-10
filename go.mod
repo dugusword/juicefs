@@ -16,7 +16,7 @@ require (
 	github.com/baidubce/bce-sdk-go v0.9.111
 	github.com/billziss-gh/cgofuse v1.5.0
 	github.com/ceph/go-ceph v0.4.0
-	github.com/colinmarc/hdfs/v2 v2.2.0
+	github.com/colinmarc/hdfs/v2 v2.3.0
 	github.com/dgraph-io/badger/v3 v3.2103.2
 	github.com/erikdubbelboer/gspt v0.0.0-20210805194459-ce36a5128377
 	github.com/go-redis/redis/v8 v8.11.5
@@ -195,7 +195,7 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/secure-io/sio-go v0.3.1 // indirect
-	github.com/shirou/gopsutil v3.20.11+incompatible // indirect
+	github.com/shirou/gopsutil v3.21.6+incompatible // indirect
 	github.com/smartystreets/assertions v1.2.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
@@ -205,6 +205,8 @@ require (
 	github.com/tidwall/sjson v1.0.4 // indirect
 	github.com/tikv/pd/client v0.0.0-20220216070739-26c668271201 // indirect
 	github.com/tinylib/msgp v1.1.3 // indirect
+	github.com/tklauser/go-sysconf v0.3.9 // indirect
+	github.com/tklauser/numcpus v0.3.0 // indirect
 	github.com/twmb/murmur3 v1.1.3 // indirect
 	github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a // indirect
 	github.com/willf/bitset v1.1.11 // indirect
