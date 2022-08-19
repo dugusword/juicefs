@@ -39,10 +39,10 @@ Result: PASS
 
 ### 测试环境
 
-- 测试主机: Amazon EC2: c5d.xlarge (4C 8G)
-- 操作系统: Ubuntu 20.04.1 LTS (Kernel 5.4.0-1029-aws)
-- 对象存储: Amazon S3
-- JuiceFS 版本: 0.17-dev (2021-09-16 292f2b65)
+- 测试主机：Amazon EC2: c5d.xlarge (4C 8G)
+- 操作系统：Ubuntu 20.04.1 LTS (Kernel 5.4.0-1029-aws)
+- 对象存储：Amazon S3
+- JuiceFS 版本：0.17-dev (2021-09-16 292f2b65)
 
 ### 测试步骤
 
@@ -103,7 +103,7 @@ Machine Architecture: x86_64
 其中跳过和失败的测试例原因如下：
 
 - fcntl17，fcntl17_64：在 POSIX locks 加锁时需要文件系统自动检测死锁，目前 JuiceFS 尚不支持
-- getxattr05：需要设置 ACL，目前 JuiceFS 尚不支持
+- getxattr05：需要设置文件扩展权限 ACL，目前 JuiceFS 尚不支持
 - ioctl_loop05，ioctl_ns07，setxattr03：需要调用 `ioctl`，目前 JuiceFS 尚不支持
 - lseek11：需要 `lseek` 处理 SEEK_DATA 和 SEEK_HOLE 标记位，目前 JuiceFS 用的是内核通用实现，尚不支持这两个 flags
 - open14，openat03：需要 `open` 处理 O_TMPFILE 标记位，由于 FUSE 不支持，JuiceFS 也无法实现

@@ -76,12 +76,17 @@ func Main(args []string) error {
 		},
 	}
 
-	// Called via mount or fstab.
-	if strings.HasSuffix(args[0], "/mount.juicefs") {
+	if calledViaMount(args) {
 		args = handleSysMountArgs(args)
+		if len(args) < 1 {
+			args = []string{"--help"}
+		}
 	}
-
 	return app.Run(reorderOptions(app, args))
+}
+
+func calledViaMount(args []string) bool {
+	return strings.HasSuffix(args[0], "/mount.juicefs")
 }
 
 func handleSysMountArgs(args []string) []string {
@@ -91,6 +96,9 @@ func handleSysMountArgs(args []string) []string {
 		"direntrycacheto": "dir-entry-cache",
 	}
 	newArgs := []string{"juicefs", "mount", "-d"}
+	if len(args) < 4 {
+		return nil
+	}
 	mountOptions := args[3:]
 	sysOptions := []string{"_netdev", "rw", "defaults", "remount"}
 	fuseOptions := make([]string, 0, 20)
@@ -114,7 +122,7 @@ func handleSysMountArgs(args []string) []string {
 		opts := strings.Split(option, ",")
 		for _, opt := range opts {
 			opt = strings.TrimSpace(opt)
-			if opt == "" || utils.StringContains(sysOptions, opt) {
+			if opt == "" || opt == "background" || utils.StringContains(sysOptions, opt) {
 				continue
 			}
 			// Lower case option name is preferred, but if it's the same as flag name, we also accept it

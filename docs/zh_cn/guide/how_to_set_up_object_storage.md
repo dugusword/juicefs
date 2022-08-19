@@ -74,7 +74,7 @@ juicefs format \
     test1
 ```
 
-由于临时凭证很快就会过期，所以关键在于格式化文件系统以后，如何在临时凭证过期前更新 JuiceFS 正在使用的临时凭证。一次凭证更新过程分为两步:
+由于临时凭证很快就会过期，所以关键在于格式化文件系统以后，如何在临时凭证过期前更新 JuiceFS 正在使用的临时凭证。一次凭证更新过程分为两步：
 
 1. 在临时凭证过期前，申请好新的临时凭证；
 2. 无需停止正在运行的 JuiceFS，直接使用 `juicefs config Meta-URL --access-key xxxx --secret-key xxxx --session-token xxxx` 命令热更新访问凭证。
@@ -471,7 +471,7 @@ juicefs format \
     myjfs
 ```
 
-如果你是在腾讯云的服务器上创建文件系统，可以在 `--bucket` 选项中直接指定 bucket 名称。 例如：
+如果你是在腾讯云的服务器上创建文件系统，可以在 `--bucket` 选项中直接指定 bucket 名称。例如：
 
 ```bash
 # 在腾讯云中运行
@@ -638,7 +638,7 @@ juicefs format \
 
 使用优刻得 US3 作为 JuiceFS 数据存储，请先参照 [这篇文档](https://docs.ucloud.cn/uai-censor/access/key) 了解如何创建 Access Key 和 Secret Key。
 
-优刻得 US3（原名 UFile） 为每个区域都提供了 `公网` 和 `内网` [endpoint 链接](https://docs.ucloud.cn/ufile/introduction/region)，你可以根据实际的场景选用。例如：
+优刻得 US3（原名 UFile）为每个区域都提供了 `公网` 和 `内网` [endpoint 链接](https://docs.ucloud.cn/ufile/introduction/region)，你可以根据实际的场景选用。例如：
 
 ```bash
 juicefs format \
@@ -692,7 +692,7 @@ make juicefs.ceph
 
 [存储池](https://docs.ceph.com/zh_CN/latest/rados/operations/pools) 是用于存储对象的逻辑分区，您可能需要首先创建一个存储池。 `--access-key` 选项的值是 Ceph 集群名称，默认集群名称是 `ceph`。` --secret-key` 选项的值是 [Ceph 客户端用户名](https://docs.ceph.com/en/latest/rados/operations/user-management)，默认用户名是 `client.admin`。
 
-为了连接到 Ceph Monitor，`librados` 将通过搜索默认位置读取 Ceph 的配置文件，并使用找到的第一个。 这些位置是：
+为了连接到 Ceph Monitor，`librados` 将通过搜索默认位置读取 Ceph 的配置文件，并使用找到的第一个。这些位置是：
 
 - `CEPH_CONF` 环境变量
 - `/etc/ceph/ceph.conf`
@@ -889,6 +889,10 @@ juicefs format \
 
 TiKV 既可以用作 JuiceFS 的元数据存储，也可以用于 JuiceFS 的数据存储。
 
+:::note 注意
+建议使用独立部署的 TiKV 5.0+ 集群作为 JuiceFS 的数据存储
+:::
+
 `--bucket` 选项格式类似 `<host>:<port>,<host>:<port>,<host>:<port>`，其中 `<host>` 是 Placement Driver（PD）的地址。`--access-key` 和 `--secret-key` 选项没有作用，可以省略。例如：
 
 ```bash
@@ -900,7 +904,7 @@ juicefs format \
 ```
 
 :::note 注意
-不要使用同一个 TiKV 集群来存储元数据和数据，因为 JuiceFS 是使用不同的协议来存储元数据（支持事务的 TxnKV) 和数据 (不支持事务的 RawKV)，TxnKV 的对象名会被编码后存储，即使添加了不同的前缀也可能导致它们的名字冲突。另外，建议启用 [Titan](https://tikv.org/docs/5.1/deploy/configure/titan/) 来提升存储数据的集群的性能。
+不要使用同一个 TiKV 集群来存储元数据和数据，因为 JuiceFS 是使用不同的协议来存储元数据（支持事务的 TxnKV) 和数据 (不支持事务的 RawKV)，TxnKV 的对象名会被编码后存储，即使添加了不同的前缀也可能导致它们的名字冲突。另外，建议启用 [Titan](https://tikv.org/docs/latest/deploy/configure/titan) 来提升存储数据的集群的性能。
 :::
 
 ### 设置 TLS
