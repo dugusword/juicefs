@@ -142,14 +142,14 @@ When using PostgreSQL as the metadata storage engine, you need to create a datab
   <TabItem value="tcp" label="TCP">
 
 ```
-postgres://<username>[:<password>]@<host>[:5432]/<database-name>[?parameters]
+postgres://[username][:<password>]@<host>[:5432]/<database-name>[?parameters]
 ```
 
   </TabItem>
   <TabItem value="unix-socket" label="Unix socket">
 
 ```
-postgres:///<database-name>?host=<socket-directories-path>[&user=<user>&password=<password>]
+postgres://[username][:<password>]@/<database-name>?host=<socket-directories-path>[&parameters]
 ```
 
   </TabItem>
@@ -177,6 +177,13 @@ juicefs format \
     "postgres://user@192.168.1.6:5432/juicefs" \
     pics
 ```
+
+:::note 
+1. juicefs uses public [schema](https://www.postgresql.org/docs/current/ddl-schemas.html) by default, if you want to use a `non-public schema`,  you need to specify `search_path` in the connection string parameter. e.g `postgres://user:mypassword@192.168.1.6:5432/juicefs?search_path=pguser1`
+2. If the `public schema` is not the first hit in the `search_path` configured on the PostgreSQL server, the `search_path` parameter must be explicitly set in the connection string.
+3. The `search_path` connection parameter can be set to multiple schemas natively, but currently juicefs only supports setting one. `postgres://user:mypassword@192.168.1.6:5432/juicefs?search_path=pguser1,public` will be considered illegal.
+:::
+
 
 ### Mount a file system
 
@@ -365,6 +372,14 @@ Please note the location of the database file, if it is not in the current direc
 ```shell
 juicefs mount -d "sqlite3:///home/herald/my-jfs.db" /mnt/jfs/
 ```
+
+One can also add driver supported [PRAGMA Statements](https://www.sqlite.org/pragma.html) to the connection string like:
+
+```shell
+"sqlite3://my-jfs.db?cache=shared&_busy_timeout=5000"
+```
+
+For more examples of SQLite database address format, please refer to [Go-SQLite3-Driver](https://github.com/mattn/go-sqlite3#connection-string).
 
 :::note
 Since SQLite is a single-file database, usually only the host where the database is located can access it. Therefore, SQLite database is more suitable for standalone use. For multiple servers sharing the same file system, it is recommended to use databases such as Redis or MySQL.

@@ -15,10 +15,12 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**.md'
+      - '.github/**'
   workflow_dispatch:
 
 jobs:
   integrationtests:
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go
@@ -34,10 +36,19 @@ jobs:
         with:
           fetch-depth: 1
 
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Build linux target
         run: |
           make juicefs
-
+          cp juicefs /tmp/mount.juicefs
 
       - name: Run Redis
         run: |
@@ -87,10 +98,15 @@ jobs:
         run: |
           sudo DURATION=60 make -C fstests fsracer
 
+      - name: MountJuiceFSTest
+        run: |
+          sudo /tmp/mount.juicefs redis://127.0.0.1:6379/1 /tmp/mount-jfs
+          [ `stat --format "%i" /tmp/mount-jfs` -eq 1 ]
+
 
       - name: log
         if: ${{ always() }}
-        run: | 
+        run: |
           tail -300 /var/log/juicefs.log
           grep "<FATAL>:" /var/log/juicefs.log && exit 1 || true
 
@@ -100,6 +116,7 @@ jobs:
         with:
           channel-id: "${{ secrets.SLACK_CHANNEL_ID_FOR_PR_CHECK_NOTIFY }}"
           slack_bot_token: "${{ secrets.SLACK_BOT_TOKEN }}"
+
 
       - name: Setup upterm session
         if: ${{ failure() }}

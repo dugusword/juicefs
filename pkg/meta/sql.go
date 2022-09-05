@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"runtime"
 	"sort"
 	"strings"
@@ -175,8 +176,20 @@ type dbSnap struct {
 }
 
 func newSQLMeta(driver, addr string, conf *Config) (Meta, error) {
+	var searchPath string
 	if driver == "postgres" {
 		addr = driver + "://" + addr
+
+		parse, err := url.Parse(addr)
+		if err != nil {
+			return nil, fmt.Errorf("parse url %s failed: %s", addr, err)
+		}
+		searchPath = parse.Query().Get("search_path")
+		if searchPath != "" {
+			if len(strings.Split(searchPath, ",")) > 1 {
+				return nil, fmt.Errorf("currently, only one schema is supported in search_path")
+			}
+		}
 	}
 	engine, err := xorm.NewEngine(driver, addr)
 	if err != nil {
@@ -202,7 +215,9 @@ func newSQLMeta(driver, addr string, conf *Config) (Meta, error) {
 	if time.Since(start) > time.Millisecond*5 {
 		logger.Warnf("The latency to database is too high: %s", time.Since(start))
 	}
-
+	if searchPath != "" {
+		engine.SetSchema(searchPath)
+	}
 	engine.DB().SetMaxIdleConns(runtime.NumCPU() * 2)
 	engine.DB().SetConnMaxIdleTime(time.Minute * 5)
 	engine.SetTableMapper(names.NewPrefixMapper(engine.GetTableMapper(), "jfs_"))
@@ -448,7 +463,7 @@ func (m *dbMeta) getSession(row interface{}, detail bool) (*Session, error) {
 			}
 			s.Plocks = make([]Plock, 0, len(prows))
 			for _, prow := range prows {
-				s.Plocks = append(s.Plocks, Plock{prow.Inode, uint64(prow.Owner), prow.Records})
+				s.Plocks = append(s.Plocks, Plock{prow.Inode, uint64(prow.Owner), loadLocks(prow.Records)})
 			}
 			return nil
 		})
@@ -867,12 +882,16 @@ func (m *dbMeta) SetAttr(ctx Context, inode Ino, set uint16, sugidclearmode uint
 			cur.Mtime = now
 			changed = true
 		}
+		if set&SetAttrFlag != 0 {
+			cur.Flags = attr.Flags
+			changed = true
+		}
 		m.parseAttr(&cur, attr)
 		if !changed {
 			return nil
 		}
 		cur.Ctime = now
-		_, err = s.Cols("mode", "uid", "gid", "atime", "mtime", "ctime").Update(&cur, &node{Inode: inode})
+		_, err = s.Cols("flags", "mode", "uid", "gid", "atime", "mtime", "ctime").Update(&cur, &node{Inode: inode})
 		if err == nil {
 			m.parseAttr(&cur, attr)
 		}
@@ -1013,6 +1032,12 @@ func (m *dbMeta) Fallocate(ctx Context, inode Ino, mode uint8, off uint64, size 
 		if n.Type != TypeFile {
 			return syscall.EPERM
 		}
+		if (n.Flags & FlagImmutable) != 0 {
+			return syscall.EPERM
+		}
+		if (n.Flags&FlagAppend) != 0 && (mode&^fallocKeepSize) != 0 {
+			return syscall.EPERM
+		}
 		length := n.Length
 		if off+size > n.Length {
 			if mode&fallocKeepSize == 0 {
@@ -1120,6 +1145,9 @@ func (m *dbMeta) doMknod(ctx Context, parent Ino, name string, _type uint8, mode
 		if pn.Type != TypeDirectory {
 			return syscall.ENOTDIR
 		}
+		if (pn.Flags & FlagImmutable) != 0 {
+			return syscall.EPERM
+		}
 		var e = edge{Parent: parent, Name: []byte(name)}
 		ok, err = s.ForUpdate().Get(&e)
 		if err != nil {
@@ -1219,6 +1247,9 @@ func (m *dbMeta) doUnlink(ctx Context, parent Ino, name string) syscall.Errno {
 		if pn.Type != TypeDirectory {
 			return syscall.ENOTDIR
 		}
+		if (pn.Flags&FlagAppend) != 0 || (pn.Flags&FlagImmutable) != 0 {
+			return syscall.EPERM
+		}
 		var e = edge{Parent: parent, Name: []byte(name)}
 		ok, err = s.ForUpdate().Get(&e)
 		if err != nil {
@@ -1248,6 +1279,9 @@ func (m *dbMeta) doUnlink(ctx Context, parent Ino, name string) syscall.Errno {
 		if ok {
 			if ctx.Uid() != 0 && pn.Mode&01000 != 0 && ctx.Uid() != pn.Uid && ctx.Uid() != n.Uid {
 				return syscall.EACCES
+			}
+			if (n.Flags&FlagAppend) != 0 || (n.Flags&FlagImmutable) != 0 {
+				return syscall.EPERM
 			}
 			n.Ctime = now
 			if trash == 0 {
@@ -1349,6 +1383,9 @@ func (m *dbMeta) doRmdir(ctx Context, parent Ino, name string) syscall.Errno {
 		}
 		if pn.Type != TypeDirectory {
 			return syscall.ENOTDIR
+		}
+		if pn.Flags&FlagImmutable != 0 || pn.Flags&FlagAppend != 0 {
+			return syscall.EPERM
 		}
 		var e = edge{Parent: parent, Name: []byte(name)}
 		ok, err = s.ForUpdate().Get(&e)
@@ -1465,6 +1502,9 @@ func (m *dbMeta) doRename(ctx Context, parentSrc Ino, nameSrc string, parentDst 
 		if spn.Type != TypeDirectory || dpn.Type != TypeDirectory {
 			return syscall.ENOTDIR
 		}
+		if (spn.Flags&FlagAppend) != 0 || (spn.Flags&FlagImmutable) != 0 || (dpn.Flags&FlagImmutable) != 0 {
+			return syscall.EPERM
+		}
 		var se = edge{Parent: parentSrc, Name: []byte(nameSrc)}
 		ok, err := s.ForUpdate().Get(&se)
 		if err != nil {
@@ -1495,6 +1535,9 @@ func (m *dbMeta) doRename(ctx Context, parentSrc Ino, nameSrc string, parentDst 
 		if !ok {
 			return syscall.ENOENT
 		}
+		if (sn.Flags&FlagAppend) != 0 || (sn.Flags&FlagImmutable) != 0 {
+			return syscall.EPERM
+		}
 
 		var de = edge{Parent: parentDst, Name: []byte(nameDst)}
 		ok, err = s.ForUpdate().Get(&de)
@@ -1524,6 +1567,9 @@ func (m *dbMeta) doRename(ctx Context, parentSrc Ino, nameSrc string, parentDst 
 			if !ok { // corrupt entry
 				logger.Warnf("no attribute for inode %d (%d, %s)", dino, parentDst, de.Name)
 				trash = 0
+			}
+			if (dn.Flags&FlagAppend) != 0 || (dn.Flags&FlagImmutable) != 0 {
+				return syscall.EPERM
 			}
 			dn.Ctime = now
 			if exchange {
@@ -1708,6 +1754,9 @@ func (m *dbMeta) doLink(ctx Context, inode, parent Ino, name string, attr *Attr)
 		if pn.Type != TypeDirectory {
 			return syscall.ENOTDIR
 		}
+		if pn.Flags&FlagImmutable != 0 {
+			return syscall.EPERM
+		}
 		var e = edge{Parent: parent, Name: []byte(name)}
 		ok, err = s.ForUpdate().Get(&e)
 		if err != nil {
@@ -1726,6 +1775,9 @@ func (m *dbMeta) doLink(ctx Context, inode, parent Ino, name string, attr *Attr)
 			return syscall.ENOENT
 		}
 		if n.Type == TypeDirectory {
+			return syscall.EPERM
+		}
+		if (n.Flags&FlagAppend) != 0 || (n.Flags&FlagImmutable) != 0 {
 			return syscall.EPERM
 		}
 
@@ -2058,6 +2110,9 @@ func (m *dbMeta) CopyFileRange(ctx Context, fin Ino, offIn uint64, fout Ino, off
 		}
 		if nout.Type != TypeFile {
 			return syscall.EINVAL
+		}
+		if (nout.Flags&FlagImmutable) != 0 || (nout.Flags&FlagAppend) != 0 {
+			return syscall.EPERM
 		}
 
 		newleng := offOut + size

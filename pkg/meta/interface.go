@@ -75,6 +75,12 @@ const (
 	SetAttrCtime
 	SetAttrAtimeNow
 	SetAttrMtimeNow
+	SetAttrFlag = 1 << 15
+)
+
+const (
+	FlagImmutable = 1 << iota
+	FlagAppend
 )
 
 const MaxName = 255
@@ -99,7 +105,7 @@ type MsgCallback func(...interface{}) error
 
 // Attr represents attributes of a node.
 type Attr struct {
-	Flags     uint8  // reserved flags
+	Flags     uint8  // flags
 	Typ       uint8  // type of a node
 	Mode      uint16 // permission mode
 	Uid       uint32 // owner id
@@ -228,7 +234,7 @@ type Flock struct {
 type Plock struct {
 	Inode   Ino
 	Owner   uint64
-	Records []byte // FIXME: loadLocks
+	Records []plockRecord
 }
 
 // Session contains detailed information of a client session
@@ -372,7 +378,7 @@ func setPasswordFromEnv(uri string) (string, error) {
 	dIndex := strings.Index(uri, "://") + 3
 	s := strings.Split(uri[dIndex:atIndex], ":")
 
-	if len(s) > 2 || s[0] == "" {
+	if len(s) > 2 {
 		return "", fmt.Errorf("invalid uri: %s", uri)
 	}
 

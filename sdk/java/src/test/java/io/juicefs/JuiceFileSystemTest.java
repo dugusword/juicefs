@@ -29,6 +29,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.security.PrivilegedExceptionAction;
@@ -132,6 +133,18 @@ public class JuiceFileSystemTest extends TestCase {
     } catch (IOException e) {
       fs.setPermission(new Path("/hello"), new FsPermission((short) 0644));
     }
+  }
+
+  public void testWrite() throws Exception {
+    Path f = new Path("/testWriteFile");
+    FSDataOutputStream fou = fs.create(f);
+    byte[] b = "hello world".getBytes();
+    OutputStream ou = ((JuiceFileSystemImpl.BufferedFSOutputStream)fou.getWrappedStream()).getOutputStream();
+    ou.write(b, 6, 5);
+    ou.close();
+    FSDataInputStream in = fs.open(f);
+    String str = IOUtils.toString(in);
+    assertEquals("world", str);
   }
 
   public void testReadSkip() throws Exception {
@@ -349,6 +362,21 @@ public class JuiceFileSystemTest extends TestCase {
         throw new IOException("Reached the end of stream. Still have: " + buf.remaining() + " bytes left");
       }
     }
+
+    Path directReadFile = new Path("/direct_file");
+    FSDataOutputStream ou = fs.create(directReadFile);
+    ou.write("hello world".getBytes());
+    ou.close();
+    FSDataInputStream dto = fs.open(directReadFile);
+    ByteBuffer directBuf = ByteBuffer.allocateDirect(11);
+    directBuf.put("hello ".getBytes());
+    dto.seek(6);
+    dto.read(directBuf);
+    byte[] rest = new byte[11];
+    directBuf.flip();
+    directBuf.get(rest, 0, rest.length);
+    assertEquals("hello world", new String(rest));
+
     /*
      * FSDataOutputStream out = fs.create(new Path("/bigfile"), true); byte[] arr =
      * new byte[1<<20]; for (int i=0; i<1024; i++) { out.write(arr); } out.close();
@@ -407,6 +435,10 @@ public class JuiceFileSystemTest extends TestCase {
     in.read(3000, new byte[6000], 0, 3000);
     assertEquals(readSize * 2 + 3000 + 3000, statistics.getBytesRead());
 
+    in.read(new byte[3000], 0, 3000);
+    assertEquals(readSize * 2 + 3000 + 3000 + 3000, statistics.getBytesRead());
+
+    in.close();
   }
 
   public void testChecksum() throws IOException {
