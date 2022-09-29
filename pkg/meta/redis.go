@@ -1777,7 +1777,7 @@ func (m *redisMeta) doReaddir(ctx Context, inode Ino, plus uint8, entries *[]*En
 		return errno(err)
 	}
 
-	if plus != 0 {
+	if plus != 0 && len(*entries) != 0 {
 		fillAttr := func(es []*Entry) error {
 			var keys = make([]string, len(es))
 			for i, e := range es {
@@ -2824,6 +2824,23 @@ func (m *redisMeta) ListSlices(ctx Context, slices map[Ino][]Slice, delete bool,
 	return errno(err)
 }
 
+func (m *redisMeta) doRepair(ctx Context, inode Ino, attr *Attr) syscall.Errno {
+	return errno(m.txn(ctx, func(tx *redis.Tx) error {
+		attr.Nlink = 2
+		vals, err := tx.HGetAll(ctx, m.entryKey(inode)).Result()
+		if err != nil {
+			return err
+		}
+		for _, v := range vals {
+			typ, _ := m.parseEntry([]byte(v))
+			if typ == TypeDirectory {
+				attr.Nlink++
+			}
+		}
+		return tx.Set(ctx, m.inodeKey(inode), m.marshal(attr), 0).Err()
+	}, m.entryKey(inode), m.inodeKey(inode)))
+}
+
 func (m *redisMeta) GetXattr(ctx Context, inode Ino, name string, vbuff *[]byte) syscall.Errno {
 	defer m.timeit(time.Now())
 	inode = m.checkRoot(inode)
@@ -3161,7 +3178,7 @@ func (m *redisMeta) dumpDir(inode Ino, tree *DumpedEntry, bw *bufio.Writer, dept
 	return nil
 }
 
-func (m *redisMeta) DumpMeta(w io.Writer, root Ino) (err error) {
+func (m *redisMeta) DumpMeta(w io.Writer, root Ino, keepSecret bool) (err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(error); ok {
@@ -3236,11 +3253,11 @@ func (m *redisMeta) DumpMeta(w io.Writer, root Ino) (err error) {
 		Sustained: sessions,
 		DelFiles:  dels,
 	}
-	if dm.Setting.SecretKey != "" {
+	if !keepSecret && dm.Setting.SecretKey != "" {
 		dm.Setting.SecretKey = "removed"
 		logger.Warnf("Secret key is removed for the sake of safety")
 	}
-	if dm.Setting.SessionToken != "" {
+	if !keepSecret && dm.Setting.SessionToken != "" {
 		dm.Setting.SessionToken = "removed"
 		logger.Warnf("Session token is removed for the sake of safety")
 	}

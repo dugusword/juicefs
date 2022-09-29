@@ -23,6 +23,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/erikdubbelboer/gspt"
 	"github.com/google/gops/agent"
@@ -73,6 +74,7 @@ func Main(args []string) error {
 			cmdWarmup(),
 			cmdRmr(),
 			cmdSync(),
+			cmdDoctor(),
 		},
 	}
 
@@ -82,7 +84,11 @@ func Main(args []string) error {
 			args = []string{"mount", "--help"}
 		}
 	}
-	return app.Run(reorderOptions(app, args))
+	err := app.Run(reorderOptions(app, args))
+	if errno, ok := err.(syscall.Errno); ok && errno == 0 {
+		err = nil
+	}
+	return err
 }
 
 func calledViaMount(args []string) bool {

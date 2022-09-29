@@ -476,18 +476,22 @@ func (m *dbMeta) getSession(row interface{}, detail bool) (*Session, error) {
 
 func (m *dbMeta) GetSession(sid uint64, detail bool) (s *Session, err error) {
 	err = m.roTxn(func(ses *xorm.Session) error {
-		row := session2{Sid: sid}
-		if ok, err := ses.Get(&row); err != nil {
+		if ok, err := ses.IsTableExist(&session2{}); err != nil {
 			return err
 		} else if ok {
-			s, err = m.getSession(&row, detail)
-			return err
+			row := session2{Sid: sid}
+			if ok, err = ses.Get(&row); err != nil {
+				return err
+			} else if ok {
+				s, err = m.getSession(&row, detail)
+				return err
+			}
 		}
 		if ok, err := ses.IsTableExist(&session{}); err != nil {
 			return err
 		} else if ok {
 			row := session{Sid: sid}
-			if ok, err := ses.Get(&row); err != nil {
+			if ok, err = ses.Get(&row); err != nil {
 				return err
 			} else if ok {
 				s, err = m.getSession(&row, detail)
@@ -502,19 +506,22 @@ func (m *dbMeta) GetSession(sid uint64, detail bool) (s *Session, err error) {
 func (m *dbMeta) ListSessions() ([]*Session, error) {
 	var sessions []*Session
 	err := m.roTxn(func(ses *xorm.Session) error {
-		var rows []session2
-		err := ses.Find(&rows)
-		if err != nil {
+		if ok, err := ses.IsTableExist(&session2{}); err != nil {
 			return err
-		}
-		sessions = make([]*Session, 0, len(rows))
-		for i := range rows {
-			s, err := m.getSession(&rows[i], false)
-			if err != nil {
-				logger.Errorf("get session: %s", err)
-				continue
+		} else if ok {
+			var rows []session2
+			if err = ses.Find(&rows); err != nil {
+				return err
 			}
-			sessions = append(sessions, s)
+			sessions = make([]*Session, 0, len(rows))
+			for i := range rows {
+				s, err := m.getSession(&rows[i], false)
+				if err != nil {
+					logger.Errorf("get session: %s", err)
+					continue
+				}
+				sessions = append(sessions, s)
+			}
 		}
 		if ok, err := ses.IsTableExist(&session{}); err != nil {
 			logger.Errorf("Check legacy session table: %s", err)
@@ -2605,6 +2612,43 @@ func (m *dbMeta) ListSlices(ctx Context, slices map[Ino][]Slice, delete bool, sh
 	return errno(err)
 }
 
+func (m *dbMeta) doRepair(ctx Context, inode Ino, attr *Attr) syscall.Errno {
+	n := &node{
+		Inode:  inode,
+		Type:   attr.Typ,
+		Mode:   attr.Mode,
+		Uid:    attr.Uid,
+		Gid:    attr.Gid,
+		Atime:  attr.Atime * 1e6,
+		Mtime:  attr.Mtime * 1e6,
+		Ctime:  attr.Ctime * 1e6,
+		Length: attr.Length,
+		Parent: attr.Parent,
+		Nlink:  attr.Nlink,
+	}
+	return errno(m.txn(func(s *xorm.Session) error {
+		n.Nlink = 2
+		var rows []edge
+		if err := s.Find(&rows, &edge{Parent: inode}); err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if row.Type == TypeDirectory {
+				n.Nlink++
+			}
+		}
+		ok, err := s.ForUpdate().Get(&node{Inode: inode})
+		if err == nil {
+			if ok {
+				_, err = s.Update(n, &node{Inode: inode})
+			} else {
+				err = mustInsert(s, n)
+			}
+		}
+		return err
+	}, inode))
+}
+
 func (m *dbMeta) GetXattr(ctx Context, inode Ino, name string, vbuff *[]byte) syscall.Errno {
 	defer m.timeit(time.Now())
 	inode = m.checkRoot(inode)
@@ -2917,7 +2961,7 @@ func (m *dbMeta) makeSnap(ses *xorm.Session, bar *utils.Bar) error {
 	return nil
 }
 
-func (m *dbMeta) DumpMeta(w io.Writer, root Ino) (err error) {
+func (m *dbMeta) DumpMeta(w io.Writer, root Ino, keepSecret bool) (err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(error); ok {
@@ -3002,11 +3046,11 @@ func (m *dbMeta) DumpMeta(w io.Writer, root Ino) (err error) {
 			Sustained: sessions,
 			DelFiles:  dels,
 		}
-		if dm.Setting.SecretKey != "" {
+		if !keepSecret && dm.Setting.SecretKey != "" {
 			dm.Setting.SecretKey = "removed"
 			logger.Warnf("Secret key is removed for the sake of safety")
 		}
-		if dm.Setting.SessionToken != "" {
+		if !keepSecret && dm.Setting.SessionToken != "" {
 			dm.Setting.SessionToken = "removed"
 			logger.Warnf("Session token is removed for the sake of safety")
 		}

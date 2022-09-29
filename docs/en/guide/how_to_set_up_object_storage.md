@@ -145,6 +145,7 @@ If you wish to use a storage system that is not listed, feel free to submit a re
 | [Sina Cloud Storage](#sina-cloud-storage)                   | `scs`      |
 | [CTYun OOS](#ctyun-oos)                                     | `oos`      |
 | [ECloud Object Storage](#ecloud-object-storage)             | `eos`      |
+| [JD Cloud OSS](#jd-cloud-oss)                               | `s3`       |
 | [UCloud US3](#ucloud-us3)                                   | `ufile`    |
 | [Ceph RADOS](#ceph-rados)                                   | `ceph`     |
 | [Ceph RGW](#ceph-rgw)                                       | `s3`       |
@@ -410,6 +411,10 @@ juicefs format \
     myjfs
 ```
 
+:::caution 
+Storj DCS [ListObjects](https://github.com/storj/gateway-st/blob/main/docs/s3-compatibility.md#listobjects) API is not fully S3 compatible (result list is not sorted), so some features of juicefs do not work. For example, `juicefs gc`, `juicefs fsck`, `juicefs sync`, `juicefs destroy`. And when using `juicefs mount`, you need to disable [automatic-backup](../administration/metadata_dump_load.md#automatic-backup) function by adding `--backup-meta 0`.
+:::
+
 ## Vultr Object Storage
 
 Vultr Object Storage is an S3-compatible storage, using `s3` for `--storage` option. The format of the option `--bucket` is `https://<bucket>.<region>.vultrobjects.com/`. For example:
@@ -634,6 +639,20 @@ juicefs format \
     myjfs
 ```
 
+## JD Cloud OSS
+
+Please follow [this document](https://docs.jdcloud.com/cn/account-management/accesskey-management)  to learn how to get access key and secret key.
+
+The `--bucket` option format is `https://<bucket>.<region>.jdcloud-oss.com`，and please replace `<region>` with specific region code. You could find all available region codes [here](https://docs.jdcloud.com/cn/object-storage-service/oss-endpont-list). For example:
+
+```bash
+juicefs format \
+    --storage s3 \
+    --bucket https://<bucket>.<region>.jdcloud-oss.com \
+    ... \
+    myjfs
+```
+
 ## UCloud US3
 
 Please follow [this document](https://docs.ucloud.cn/uai-censor/access/key) to learn how to get access key and secret key.
@@ -782,7 +801,8 @@ juicefs format \
 ```
 
 :::note
-Currently, JuiceFS only supports path-style MinIO URI addresses, e.g., `http://127.0.0.1:9000/myjfs`.
+1. Currently, JuiceFS only supports path-style MinIO URI addresses, e.g., `http://127.0.0.1:9000/myjfs`.
+2. The `MINIO_REGION` environment variable can be used to set the region of MinIO, if not set, the default is `us-east-1`.
 :::
 
 ## WebDAV

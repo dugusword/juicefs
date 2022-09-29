@@ -19,6 +19,8 @@ package meta
 import (
 	"encoding/json"
 	"fmt"
+	"path"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -73,8 +75,18 @@ type engine interface {
 	doSetXattr(ctx Context, inode Ino, name string, value []byte, flags uint32) syscall.Errno
 	doRemoveXattr(ctx Context, inode Ino, name string) syscall.Errno
 	doGetParents(ctx Context, inode Ino) map[Ino]int
+	doRepair(ctx Context, inode Ino, attr *Attr) syscall.Errno
 
 	GetSession(sid uint64, detail bool) (*Session, error)
+}
+
+// fsStat aligned for atomic operations
+// nolint:structcheck
+type fsStat struct {
+	newSpace   int64
+	newInodes  int64
+	usedSpace  int64
+	usedInodes int64
 }
 
 type baseMeta struct {
@@ -93,11 +105,9 @@ type baseMeta struct {
 	maxDeleting  chan struct{}
 	symlinks     *sync.Map
 	msgCallbacks *msgCallbacks
-	newSpace     int64
-	newInodes    int64
-	usedSpace    int64
-	usedInodes   int64
 	umounting    bool
+
+	*fsStat
 
 	freeMu     sync.Mutex
 	freeInodes freeID
@@ -128,6 +138,7 @@ func newBaseMeta(addr string, conf *Config) *baseMeta {
 		compacting:   make(map[uint64]bool),
 		maxDeleting:  make(chan struct{}, 100),
 		symlinks:     &sync.Map{},
+		fsStat:       new(fsStat),
 		msgCallbacks: &msgCallbacks{
 			callbacks: make(map[uint32]MsgCallback),
 		},
@@ -949,6 +960,224 @@ func (m *baseMeta) GetParents(ctx Context, inode Ino) map[Ino]int {
 	} else {
 		return m.en.doGetParents(ctx, inode)
 	}
+}
+
+func (m *baseMeta) GetPaths(ctx Context, inode Ino) []string {
+	if inode == RootInode {
+		return []string{"/"}
+	}
+
+	if inode == TrashInode {
+		return []string{"/.trash"}
+	}
+
+	outside := "path not shown because it's outside of the mounted root"
+	getDirPath := func(ino Ino) (string, error) {
+		var names []string
+		var attr Attr
+		for ino != RootInode && ino != m.root {
+			if st := m.en.doGetAttr(ctx, ino, &attr); st != 0 {
+				return "", fmt.Errorf("getattr inode %d: %s", ino, st)
+			}
+			if attr.Typ != TypeDirectory {
+				return "", fmt.Errorf("inode %d is not a directory", ino)
+			}
+			var entries []*Entry
+			if st := m.en.doReaddir(ctx, attr.Parent, 0, &entries, -1); st != 0 {
+				return "", fmt.Errorf("readdir inode %d: %s", ino, st)
+			}
+			var name string
+			for _, e := range entries {
+				if e.Inode == ino {
+					name = string(e.Name)
+					break
+				}
+			}
+			if attr.Parent == RootInode && ino == TrashInode {
+				name = TrashName
+			}
+			if name == "" {
+				return "", fmt.Errorf("entry %d/%d not found", attr.Parent, ino)
+			}
+			names = append(names, name)
+			ino = attr.Parent
+		}
+		if m.root != RootInode && ino == RootInode {
+			return outside, nil
+		}
+		names = append(names, "/") // add root
+
+		for i, j := 0, len(names)-1; i < j; i, j = i+1, j-1 { // reverse
+			names[i], names[j] = names[j], names[i]
+		}
+		return path.Join(names...), nil
+	}
+
+	var paths []string
+	// inode != RootInode, parent is the real parent inode
+	for parent, count := range m.GetParents(ctx, inode) {
+		if count <= 0 {
+			continue
+		}
+		dir, err := getDirPath(parent)
+		if err != nil {
+			logger.Warnf("Get directory path of %d: %s", parent, err)
+			continue
+		} else if dir == outside {
+			paths = append(paths, outside)
+			continue
+		}
+		var entries []*Entry
+		if st := m.en.doReaddir(ctx, parent, 0, &entries, -1); st != 0 {
+			logger.Warnf("Readdir inode %d: %s", parent, st)
+			continue
+		}
+		var c int
+		for _, e := range entries {
+			if e.Inode == inode {
+				c++
+				paths = append(paths, path.Join(dir, string(e.Name)))
+			}
+		}
+		if c != count {
+			logger.Warnf("Expect to find %d entries under parent %d, but got %d", count, parent, c)
+		}
+	}
+	return paths
+}
+
+func (m *baseMeta) countDirNlink(ctx Context, inode Ino) (uint32, syscall.Errno) {
+	var entries []*Entry
+	if st := m.en.doReaddir(ctx, inode, 0, &entries, -1); st != 0 {
+		logger.Errorf("readdir inode %d: %s", inode, st)
+		return 0, st
+	}
+	var dirCounter uint32 = 2
+	for _, e := range entries {
+		if e.Attr.Typ == TypeDirectory {
+			dirCounter++
+		}
+	}
+	return dirCounter, 0
+}
+
+type metaWalkFunc func(ctx Context, inode Ino, path string, attr *Attr)
+
+func (m *baseMeta) walk(ctx Context, inode Ino, path string, attr *Attr, walkFn metaWalkFunc) syscall.Errno {
+	walkFn(ctx, inode, path, attr)
+	var entries []*Entry
+	st := m.en.doReaddir(ctx, inode, 1, &entries, -1)
+	if st != 0 {
+		logger.Errorf("list %s: %s", path, st)
+		return st
+	}
+	for _, entry := range entries {
+		if !entry.Attr.Full {
+			entry.Attr.Parent = inode
+		}
+		if st := m.walk(ctx, entry.Inode, filepath.Join(path, string(entry.Name)), entry.Attr, walkFn); st != 0 {
+			return st
+		}
+	}
+	return 0
+}
+
+func (m *baseMeta) Check(ctx Context, fpath string, repair bool, recursive bool) (st syscall.Errno) {
+	var attr Attr
+	var inode = RootInode
+	var parent = RootInode
+	attr.Typ = TypeDirectory
+	ps := strings.FieldsFunc(fpath, func(r rune) bool {
+		return r == '/'
+	})
+	for i, name := range ps {
+		parent = inode
+		if st = m.Lookup(ctx, parent, name, &inode, &attr); st != 0 {
+			logger.Errorf("Lookup parent %d name %s: %s", parent, name, st)
+			return
+		}
+		if !attr.Full && i < len(ps)-1 {
+			// missing attribute
+			p := "/" + path.Join(ps[:i+1]...)
+			if attr.Typ != TypeDirectory { // TODO: determine file size?
+				logger.Warnf("Attribute of %s (inode %d type %d) is missing and cannot be auto-repaired, please repair it manually or remove it", p, inode, attr.Typ)
+			} else {
+				logger.Warnf("Attribute of %s (inode %d) is missing, please re-run with '--path %s --repair' to fix it", p, inode, p)
+			}
+		}
+	}
+	if !attr.Full {
+		attr.Parent = parent
+	}
+
+	type node struct {
+		inode Ino
+		path  string
+		attr  *Attr
+	}
+	nodes := make(chan *node, 1000)
+	go func() {
+		defer close(nodes)
+		if recursive {
+			st = m.walk(ctx, inode, fpath, &attr, func(ctx Context, inode Ino, path string, attr *Attr) {
+				nodes <- &node{inode, path, attr}
+			})
+		} else {
+			nodes <- &node{inode, fpath, &attr}
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for e := range nodes {
+				inode := e.inode
+				path := e.path
+				attr := e.attr
+				if attr.Typ != TypeDirectory {
+					// TODO
+					continue
+				}
+				if attr.Full {
+					nlink, st := m.countDirNlink(ctx, inode)
+					if st != 0 {
+						logger.Errorf("Count nlink for inode %d: %s", inode, st)
+						continue
+					}
+					if attr.Nlink == nlink {
+						continue
+					}
+					logger.Warnf("nlink of %s should be %d, but got %d", path, nlink, attr.Nlink)
+				} else {
+					logger.Warnf("attribute of %s is missing", path)
+				}
+
+				if repair {
+					if !attr.Full {
+						now := time.Now().Unix()
+						attr.Mode = 0644
+						attr.Uid = ctx.Uid()
+						attr.Gid = ctx.Gid()
+						attr.Atime = now
+						attr.Mtime = now
+						attr.Ctime = now
+						attr.Length = 4 << 10
+					}
+					if st1 := m.en.doRepair(ctx, inode, attr); st1 == 0 {
+						logger.Infof("Path %s (inode %d) is successfully repaired", path, inode)
+					} else {
+						logger.Errorf("Repair path %s inode %d: %s", path, inode, st1)
+					}
+				} else {
+					logger.Warnf("Path %s (inode %d) can be repaired, please re-run with '--path %s --repair' to fix it", path, inode, path)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	return
 }
 
 func (m *baseMeta) fileDeleted(opened bool, inode Ino, length uint64) {

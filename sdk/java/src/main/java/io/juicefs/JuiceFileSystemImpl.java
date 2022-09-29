@@ -53,6 +53,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.*;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
@@ -62,6 +63,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipEntry;
 
 /****************************************************************
  * Implement the FileSystem API for JuiceFS
@@ -93,7 +95,7 @@ public class JuiceFileSystemImpl extends FileSystem {
   private boolean metricsEnable = false;
 
   /*
-   * hadoop compability
+   * hadoop compatibility
    */
   private boolean withStreamCapability;
   // constructor for BufferedFSOutputStreamWithStreamCapabilities
@@ -184,12 +186,13 @@ public class JuiceFileSystemImpl extends FileSystem {
   static int MODE_MASK_X = 1;
 
   private IOException error(int errno, Path p) {
+    String pStr = p == null ? "" : p.toString();
     if (errno == EPERM) {
-      return new PathPermissionException(p.toString());
+      return new PathPermissionException(pStr);
     } else if (errno == ENOTDIR) {
       return new ParentNotDirectoryException();
     } else if (errno == ENOENT) {
-      return new FileNotFoundException(p.toString() + ": not found");
+      return new FileNotFoundException(pStr+ ": not found");
     } else if (errno == EACCESS) {
       try {
         String user = ugi.getShortUserName();
@@ -202,25 +205,25 @@ public class JuiceFileSystemImpl extends FileSystem {
       } catch (Exception e) {
         LOG.warn("fail to generate better error message", e);
       }
-      return new AccessControlException("Permission denied: " + p.toString());
+      return new AccessControlException("Permission denied: " + pStr);
     } else if (errno == EEXIST) {
       return new FileAlreadyExistsException();
     } else if (errno == EINVAL) {
       return new InvalidRequestException("Invalid parameter");
     } else if (errno == ENOTEMPTY) {
-      return new PathIsNotEmptyDirectoryException(p.toString());
+      return new PathIsNotEmptyDirectoryException(pStr);
     } else if (errno == EINTR) {
       return new InterruptedIOException();
     } else if (errno == ENOTSUP) {
-      return new PathOperationException(p.toString());
+      return new PathOperationException(pStr);
     } else if (errno == ENOSPACE) {
       return new IOException("No space");
     } else if (errno == EROFS) {
       return new IOException("Read-only Filesystem");
     } else if (errno == EIO) {
-      return new IOException(p.toString());
+      return new IOException(pStr);
     } else {
-      return new IOException("errno: " + errno + " " + p.toString());
+      return new IOException("errno: " + errno + " " + pStr);
     }
   }
 
@@ -312,6 +315,8 @@ public class JuiceFileSystemImpl extends FileSystem {
     obj.put("entryTimeout", Float.valueOf(getConf(conf, "entry-cache", "0.0")));
     obj.put("dirEntryTimeout", Float.valueOf(getConf(conf, "dir-entry-cache", "0.0")));
     obj.put("cacheFullBlock", Boolean.valueOf(getConf(conf, "cache-full-block", "true")));
+    obj.put("cacheChecksum", getConf(conf, "verify-cache-checksum", "full"));
+    obj.put("cacheScanInterval", Integer.valueOf(getConf(conf, "cache-scan-interval", "300")));
     obj.put("metacache", Boolean.valueOf(getConf(conf, "metacache", "true")));
     obj.put("autoCreate", Boolean.valueOf(getConf(conf, "auto-create-cache-dir", "true")));
     obj.put("maxUploads", Integer.valueOf(getConf(conf, "max-uploads", "20")));
@@ -529,40 +534,40 @@ public class JuiceFileSystemImpl extends FileSystem {
 
     File libFile = new File(dir, name);
 
-    URL res = null;
-    String jarPath;
-    try {
-      jarPath = JuiceFileSystemImpl.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath();
-    } catch (URISyntaxException e) {
-      throw new IOException("get jar path failed", e);
-    }
-    Enumeration<URL> resources = JuiceFileSystemImpl.class.getClassLoader().getResources(resource);
-    while (resources.hasMoreElements()) {
-      res = resources.nextElement();
-      if (URI.create(res.getPath()).getPath().startsWith(jarPath)) {
-        break;
-      }
-    }
-    if (res == null) {
+    InputStream ins;
+    long soTime;
+    URL location = JuiceFileSystemImpl.class.getProtectionDomain().getCodeSource().getLocation();
+    if (location == null) {
       // jar may changed
       return libjfsLibraryLoader.load(libFile.getAbsolutePath());
     }
-    URLConnection conn;
+    URLConnection con;
     try {
-      conn = res.openConnection();
+      con = location.openConnection();
     } catch (FileNotFoundException e) {
       // jar may changed
       return libjfsLibraryLoader.load(libFile.getAbsolutePath());
     }
-
-    long soTime = conn.getLastModified();
-    if (res.getProtocol().equalsIgnoreCase("jar")) {
-      soTime = new JarFile(jarPath).getJarEntry(resource)
-              .getLastModifiedTime()
-              .toMillis();
+    if (location.getProtocol().equals("jar") && (con instanceof JarURLConnection)) {
+      LOG.debug("juicefs-hadoop.jar is a nested jar");
+      JarURLConnection connection = (JarURLConnection) con;
+      JarFile jfsJar = connection.getJarFile();
+      ZipEntry entry = jfsJar.getJarEntry(resource);
+      soTime = entry.getLastModifiedTime().toMillis();
+      ins = jfsJar.getInputStream(entry);
+    } else {
+      String jarPath = URLDecoder.decode(location.getPath(), Charset.defaultCharset().name());
+      if (jarPath.endsWith(".jar")) {
+        JarFile jfsJar = new JarFile(jarPath);
+        ZipEntry entry = jfsJar.getJarEntry(resource);
+        soTime = entry.getLastModifiedTime().toMillis();
+        ins = jfsJar.getInputStream(entry);
+      } else { // for debug: sdk/java/target/classes
+        soTime = con.getLastModified();
+        ins = JuiceFileSystemImpl.class.getClassLoader().getResourceAsStream(resource);
+      }
     }
 
-    InputStream ins = conn.getInputStream();
     synchronized (JuiceFileSystemImpl.class) {
       if (!libFile.exists() || libFile.lastModified() < soTime) {
         // try the name for current user
@@ -1054,7 +1059,7 @@ public class JuiceFileSystemImpl extends FileSystem {
     while (true) {
       int fd = lib.jfs_create(Thread.currentThread().getId(), handle, normalizePath(f), permission.toShort());
       if (fd == ENOENT) {
-        Path parent = f.getParent();
+        Path parent = makeQualified(f).getParent();
         FsPermission perm = FsPermission.getDirDefault().applyUMask(FsPermission.getUMask(getConf()));
         try {
           mkdirs(parent, perm);
@@ -1070,7 +1075,7 @@ public class JuiceFileSystemImpl extends FileSystem {
         continue;
       }
       if (fd < 0) {
-        throw error(fd, f.getParent());
+        throw error(fd, makeQualified(f).getParent());
       }
       return createFsDataOutputStream(f, bufferSize, fd, 0L);
     }
@@ -1097,7 +1102,7 @@ public class JuiceFileSystemImpl extends FileSystem {
       fd = lib.jfs_create(Thread.currentThread().getId(), handle, normalizePath(f), permission.toShort());
     }
     if (fd < 0) {
-      throw error(fd, f.getParent());
+      throw error(fd, makeQualified(f).getParent());
     }
     return createFsDataOutputStream(f, bufferSize, fd, 0L);
   }
@@ -1183,12 +1188,12 @@ public class JuiceFileSystemImpl extends FileSystem {
     if (srcs.length == 0) {
       throw new IllegalArgumentException("No sources given");
     }
-    Path dp = dst.getParent();
+    Path dp = makeQualified(dst).getParent();
     for (Path src : srcs) {
-      if (!src.getParent().equals(dp)) {
-        throw new HadoopIllegalArgumentException("Source file " + src
+      if (!makeQualified(src).getParent().equals(dp)) {
+        throw new HadoopIllegalArgumentException("Source file " + normalizePath(src)
                 + " is not in the same directory with the target "
-                + dst);
+                + normalizePath(dst));
       }
     }
     byte[][] srcbytes = new byte[srcs.length][];
@@ -1388,12 +1393,12 @@ public class JuiceFileSystemImpl extends FileSystem {
     if (r == 0 || r == EEXIST && !isFile(f)) {
       return true;
     } else if (r == ENOENT) {
-      Path parent = f.getParent();
+      Path parent = makeQualified(f).getParent();
       if (parent != null) {
         return mkdirs(parent, permission) && mkdirs(f, permission);
       }
     }
-    throw error(r, f.getParent());
+    throw error(r, makeQualified(f).getParent());
   }
 
   @Override

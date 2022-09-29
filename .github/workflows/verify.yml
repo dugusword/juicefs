@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.17.x'
+          go-version: '1.18.x'
       - uses: actions/checkout@v2
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
@@ -53,9 +53,9 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        key: ${{ runner.os }}-go
         restore-keys: |
-          ${{ runner.os }}-go-
+          ${{ runner.os }}-go
 
     - name: Build linux target
       run: GOPATH=$HOME/go make
@@ -74,3 +74,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install librados-dev
         GOPATH=$HOME/go make juicefs.ceph
+
+    - name: build fdb
+      run: |
+        wget https://github.com/apple/foundationdb/releases/download/6.3.23/foundationdb-clients_6.3.23-1_amd64.deb
+        sudo dpkg -i foundationdb-clients_6.3.23-1_amd64.deb
+        GOPATH=$HOME/go make juicefs.fdb

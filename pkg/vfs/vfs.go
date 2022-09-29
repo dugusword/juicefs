@@ -730,7 +730,7 @@ func (v *VFS) Flush(ctx Context, ino Ino, fh uint64, lockOwner uint64) (err sysc
 		fh = v.getControlHandle(ctx.Pid())
 		defer v.releaseControlHandle(ctx.Pid())
 	}
-	defer func() { logit(ctx, "flush (%d,%d): %s", ino, fh, strerr(err)) }()
+	defer func() { logit(ctx, "flush (%d,%d,%016X): %s", ino, fh, lockOwner, strerr(err)) }()
 	h := v.findHandle(ino, fh)
 	if h == nil {
 		err = syscall.EBADF
@@ -744,10 +744,8 @@ func (v *VFS) Flush(ctx Context, ino Ino, fh uint64, lockOwner uint64) (err sysc
 	}
 
 	if h.writer != nil {
-		if !h.Wlock(ctx) {
+		for !h.Wlock(ctx) {
 			h.cancelOp(ctx.Pid())
-			err = syscall.EINTR
-			return
 		}
 
 		err = h.writer.Flush(ctx)
@@ -762,10 +760,9 @@ func (v *VFS) Flush(ctx Context, ino Ino, fh uint64, lockOwner uint64) (err sysc
 
 	h.Lock()
 	locks := h.locks
-	owner := h.plockOwner
 	h.Unlock()
 	if locks&2 != 0 {
-		_ = v.Meta.Setlk(ctx, ino, owner, false, F_UNLCK, 0, 0x7FFFFFFFFFFFFFFF, 0)
+		_ = v.Meta.Setlk(ctx, ino, lockOwner, false, F_UNLCK, 0, 0x7FFFFFFFFFFFFFFF, 0)
 	}
 	return
 }
@@ -905,11 +902,12 @@ func (v *VFS) RemoveXattr(ctx Context, ino Ino, name string) (err syscall.Errno)
 var logger = utils.GetLogger("juicefs")
 
 type VFS struct {
-	Conf   *Config
-	Meta   meta.Meta
-	Store  chunk.ChunkStore
-	reader DataReader
-	writer DataWriter
+	Conf            *Config
+	Meta            meta.Meta
+	Store           chunk.ChunkStore
+	InvalidateEntry func(parent meta.Ino, name string) syscall.Errno
+	reader          DataReader
+	writer          DataWriter
 
 	handles map[Ino][]*handle
 	hanleM  sync.Mutex
